@@ -1,0 +1,5 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' proc/exit = ')
+   (print-int [%arg0])
+   (%eol)
+$HOOK_ENTRY_EPILOGUE

@@ -1,0 +1,8 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' file/dup3 ')
+   (print-int [%arg0])
+   (print-char 32)
+   (print-int [%arg1])
+   (print-str ' 0x')
+   (print-hex [%arg2])
+$HOOK_ENTRY_EPILOGUE

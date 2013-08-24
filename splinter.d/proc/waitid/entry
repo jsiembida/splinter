@@ -1,0 +1,8 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' proc/waitid ')
+   (print-hex [%arg0])
+   (print-char 32)
+   (print-int [%arg1])
+   (print-char 32)
+   (print-int [%arg3])
+$HOOK_ENTRY_EPILOGUE

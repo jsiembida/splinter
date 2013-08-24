@@ -1,0 +1,28 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' net/accept ')
+   (print-int [%arg0])
+   (print-str ' [')
+
+   {%header1 [mem [%arg1]]}
+   {%proto (bit-and [%header1] 0xffff)}
+
+   {if <is-eq [%proto] 2>
+      {exec
+         {%header1 (bit-and (bit-shr [%header1] 16) 0xffff)}
+         {%header2 (bit-and [%header1] 0xff)}
+         {%header1 (bit-shr [%header1] 8)}
+         {print-ip [mem (add [%arg1] 4)]}
+         {print-char 58}
+         {print-int (add (bit-shl [%header2] 8) [%header1])}
+      }
+      {if <is-eq [%proto] 16>
+         {print-str 'netlink'}
+         {if <is-eq [%proto] 1>
+           {print-str (add [%arg1] 6)}
+           {print-str 'unknown'}
+         }
+      }
+   }
+   (print-str '] ')
+   (print-uint [%arg2])
+$HOOK_ENTRY_EPILOGUE

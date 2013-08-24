@@ -1,0 +1,8 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' proc/futex ')
+   (print-hex [%arg0])
+   (print-char 32)
+   (print-int [%arg1])
+   (print-char 32)
+   (print-int [%arg2])
+$HOOK_ENTRY_EPILOGUE

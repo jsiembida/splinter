@@ -1,0 +1,16 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' io/select ')
+   (print-int [%arg0])
+   {if <is-null [%arg1]>
+     {print-str ' []'}
+     {exec {print-str ' ['} {print-uints [%arg1] 4 ' '} {print-str ']'}}
+   }
+   {if <is-null [%arg2]>
+     {print ' []'}
+     {exec {print-str ' ['} {print-uints [%arg2] 4 ' '} {print-str ']'}}
+   }
+   {if <is-null [%arg3]>
+     {print ' []'}
+     {exec {print-str ' ['} {print-uints [%arg3] 4 ' '} {print-str ']'}}
+   }
+$HOOK_ENTRY_EPILOGUE

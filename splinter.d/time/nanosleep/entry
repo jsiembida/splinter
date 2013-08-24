@@ -1,0 +1,6 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' time/nanosleep ')
+   (print-uint [mem [%arg0]])
+   (print-char 46)
+   (print-uint [mem (add [%arg0] %word)] 9)
+$HOOK_ENTRY_EPILOGUE

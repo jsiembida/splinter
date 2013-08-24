@@ -1,0 +1,3 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' time/getitimer')
+$HOOK_ENTRY_EPILOGUE

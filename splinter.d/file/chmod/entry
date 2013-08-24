@@ -1,0 +1,4 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str 'file/chmod "' [%arg0] '" 0x')
+   (print-hex [%arg1])
+$HOOK_ENTRY_EPILOGUE

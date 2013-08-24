@@ -1,0 +1,9 @@
+
+- The disassembly part really needs a major rework.
+
+- Reasonable error handling and communicating in parser (done?)
+
+- URL like escape chars for strings (done)
+
+- Basic escape chars for strings (that is \b \n \r) (done)
+

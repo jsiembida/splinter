@@ -1,0 +1,53 @@
+{exec
+   [%curr (current)]
+   (current (task $TASK_ID))
+   [%path "$FILE_PATH"]
+
+   (signature)
+   (print-str ' shot/fd-redirect "' [%path] '" $FILE_ID = ')
+   [%arg0 0]
+   [%arg1 $FILE_FLAGS]
+   (call $alloc_fd)
+   {if <is-err [%ret]>
+      {exec
+         (print-int [%ret])
+         (print-str ' (alloc_fd)')
+         (%eol)
+         (current [%curr])
+         {quit}
+      }
+   }
+   [%newfd [%ret]]
+
+   [%arg0 [%path]]
+   [%arg1 $FILE_FLAGS]
+   [%arg2 $FILE_MODE]
+   (call $filp_open)
+   {if <is-err [%ret]>
+      {exec
+         (print-int [%ret])
+         (print-str ' (filp_open)')
+         (%eol)
+         [%arg0 [%newfd]]
+         (call $put_unused_fd)
+         (current [%curr])
+         {quit}
+      }
+   }
+
+   [%arg1 [%ret]]
+   [%arg0 [%newfd]]
+   (call $fd_install)
+
+   [arg 0 [%newfd]]
+   [arg 1 $FILE_ID]
+   (call $sys_dup2)
+
+   [arg 0 [%newfd]]
+   (call $sys_close)
+
+   (print-str '0')
+   (%eol)
+
+   (current [%curr])
+}

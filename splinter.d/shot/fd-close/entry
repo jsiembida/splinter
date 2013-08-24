@@ -1,0 +1,13 @@
+{exec
+   (%var0 (current))
+   (current (task $TASK_ID))
+   (%arg0 $FILE_ID)
+   (signature)
+   (print-str ' shot/fd-close ')
+   (print-int [%arg0])
+   (call $sys_close)
+   (print-str ' = ')
+   (print-int [%ret])
+   (%eol)
+   (current (%var0))
+}

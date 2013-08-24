@@ -1,0 +1,6 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' proc/exec "')
+   (print-str [%arg0] '" "')
+   (print-argv [%arg1] -1 '" "')
+   (print-char 34)
+$HOOK_ENTRY_EPILOGUE

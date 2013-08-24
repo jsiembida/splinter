@@ -1,0 +1,4 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str 'file/sys_fchmodat "' [%arg1] '" 0x')
+   (print-hex [%arg2])
+$HOOK_ENTRY_EPILOGUE

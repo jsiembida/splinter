@@ -1,0 +1,8 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' net/socket ')
+   (print-int [%arg0])
+   (print-char 32)
+   (print-int [%arg1])
+   (print-char 32)
+   (print-int [%arg2])
+$HOOK_ENTRY_EPILOGUE

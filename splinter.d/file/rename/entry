@@ -1,0 +1,3 @@
+$HOOK_ENTRY_PROLOGUE
+   (print-str ' file/rename "' [%arg1] '" "' [%arg3] '"')
+$HOOK_ENTRY_EPILOGUE
