@@ -28,7 +28,6 @@ extern int splinter_test_mode;
 #include <asm/pgtable.h>
 #include <asm/system.h>
 
-#include <linux/smp_lock.h>
 #include <linux/errno.h>
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
