@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 ############################################################################
 
@@ -10,12 +10,14 @@ from ctypes import cdll, create_string_buffer
 
 ############################################################################
 
-def isLoaded():
-   return path.exists('/dev/splinter')
+deviceFile = environ.get('SPLINTER_DEVICE', '/dev/splinter')
 
-def exitIfNotLoaded():
-   if not isLoaded():
-      print '\nSplinter kernel module not loaded...\n'
+def isModuleLoaded():
+   return path.exists(deviceFile)
+
+def exitIfModuleNotLoaded():
+   if not isModuleLoaded():
+      print('\nSplinter kernel module not loaded...\n')
       exit(-1)
 
 ############################################################################
@@ -26,15 +28,13 @@ symbolCache = {}
 def findAddress(symbol, ignoreExceptions = True):
    try:
       if not symbolCache:
-         f = open(symbolFile)
-         for (a, t, s) in (l.strip().split()[0:3] for l in f):
-            symbolCache[s] = a
-         f.close()
+         with open(symbolFile) as f:
+            for (addr, addr_type, sym) in (l.strip().split()[0:3] for l in f):
+               symbolCache[sym] = addr
       return symbolCache[symbol.strip()]
-   except Exception, e:
-      if ignoreExceptions:
-         return ''
-      raise e
+   except Exception as e:
+      if not ignoreExceptions:
+         raise e
 
 ############################################################################
 
@@ -47,9 +47,10 @@ def netstringGet(string):
       if (not d) or (len(l) > 6):
          raise Exception
       l = int(l)
+      return (d[:l], d[(l + 1):]) if d[l] is ',' else (None, None)
    except:
-      return None, None
-   return (d[:l], d[(l + 1):]) if d[l] is ',' else (None, None)
+      pass
+   return (None, None)
 
 def netstringUnroll(string):
    values = []
@@ -67,19 +68,19 @@ class InterfaceException(Exception):
 ############################################################################
 
 class DirectoryInterface(object):
-   def __init__(self, dir = '.'):
-      if dir[-1] != '/':
-         dir += '/'
+   def __init__(self, dir = path.curdir):
+      if dir[-1] != path.sep:
+         dir += path.sep
       if not path.isdir(dir):
          raise InterfaceException('Directory ' + dir + ' does not exist')
       self.dir = dir
 
    def read(self, name, ignoreNonExistent = True):
       try:
-         f = open(self.dir + '/' + name)
-      except IOError, e:
+         f = open(self.dir + path.sep + name)
+      except IOError as e:
          if ignoreNonExistent:
-            return ''
+            return None
          raise e
       l = f.read()
       f.close()
@@ -88,9 +89,8 @@ class DirectoryInterface(object):
    def write(self, name, value):
       if not (hasattr(value, 'iter') or hasattr(value, '__iter__')):
          value = [value]
-      f = open(self.dir + '/' + name, 'w')
-      f.writelines(map(str, value))
-      f.close()
+      with open(self.dir + path.sep + name, 'w') as f:
+         f.writelines(map(str, value))
       return None
 
 ############################################################################
@@ -101,7 +101,7 @@ class DeviceInterface(object):
    Kernel module writes data IN PLACE, in a buffer
    provided upon request.
    """
-   def __init__(self, path = '/dev/splinter'):
+   def __init__(self, path = deviceFile):
       self.libc = cdll.LoadLibrary("libc.so.6")
       self.fd = self.libc.open(path, 0)
       if self.fd < 0:
@@ -112,9 +112,11 @@ class DeviceInterface(object):
          self.libc.close(self.fd)
       self.fd = -1
 
-   def msg(self, msg):
-      # stderr.write('dev snd = [' + str(msg) + ']\n')
-      msg_buf = create_string_buffer(msg, 16 * 1024)
+   def msg(self, msg_data):
+      # stderr.write('dev snd = [' + str(msg_data) + ']\n')
+      max_len = 16 * 1024
+      msg_padded = msg_data + ('\x00' * (max_len - len(msg_data) - 1))
+      msg_buf = create_string_buffer(msg_padded)
       if self.libc.read(self.fd, msg_buf, len(msg_buf)) <= 0:
          return None
       # stderr.write('dev rcv = [' + str(msg_buf.value) + ']\n')
@@ -123,7 +125,7 @@ class DeviceInterface(object):
 ############################################################################
 
 class SocketInterface(object):
-   def __init__(self, path = None):
+   def __init__(self, path):
       self.fd = socket(AF_UNIX, SOCK_STREAM)
       if self.fd < 0:
          raise InterfaceException('Socket ' + path + ' could not be opened')
@@ -135,24 +137,23 @@ class SocketInterface(object):
       self.fd = -1
 
    def msg(self, msg):
+      max_len = 16 * 1024
       self.fd.send(msg)
-      reply = self.fd.recv(16 * 1024)
+      reply = self.fd.recv(max_len)
       return None if not reply else reply
 
 ############################################################################
 
 def getDefaultInterface():
    vals = globals()
-   if vals.has_key('defaultInterface'):
-      return vals['defaultInterface']
-   if environ.has_key('SPLINTER_PID'):
-      p = environ.get('SPLINTER_SOCKET', "/var/run/.%l-splinter.%p")
-      p = p.replace('%p', environ['SPLINTER_PID']).replace('%l', getlogin())
-      print p
-      vals['defaultInterface'] = SocketInterface(p)
-   else:
-      exitIfNotLoaded()
-      vals['defaultInterface'] = DeviceInterface()
+   if 'defaultInterface' not in vals:
+      if 'SPLINTER_PID' in environ:
+         p = environ.get('SPLINTER_SOCKET', "/var/run/.%l-splinter.%p")
+         p = p.replace('%p', environ['SPLINTER_PID']).replace('%l', getlogin())
+         vals['defaultInterface'] = SocketInterface(p)
+      else:
+         exitIfModuleNotLoaded()
+         vals['defaultInterface'] = DeviceInterface()
    return vals['defaultInterface']
 
 ############################################################################
@@ -162,9 +163,8 @@ class HookException(Exception):
 
 class Hook(object):
    def __init__(self, num, interface = None):
-      if not interface:
-         interface = getDefaultInterface()
-      self.interface, self.num, self.text = interface, num, ''
+      self.interface = interface if interface else getDefaultInterface()
+      self.num, self.text = num, ''
       self.stats()
 
    def msg(self, req, *values):
@@ -212,16 +212,19 @@ class Hook(object):
 
 ############################################################################
 
+class RuleException(Exception):
+   pass
+
 class Rule(DirectoryInterface):
    _escapeChar = '%'
    _maxVars = 8
    _vars = {}
 
    _regs_x16 = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'bp', 'sp', 'ip', 'flags']
-   _regs_x32 = map(lambda r: 'e'+r, _regs_x16)
-   _regs_x64 = map(lambda r: 'r'+r, _regs_x16) + map(lambda r: 'r'+str(r), range(8, 16))
+   _regs_x32 = list(map(lambda r: 'e'+r, _regs_x16))
+   _regs_x64 = list(map(lambda r: 'r'+r, _regs_x16)) + list(map(lambda r: 'r'+str(r), range(8, 16)))
 
-   _args_x32_cdecl  = map(lambda a: 'arg '+str(a), range(10))
+   _args_x32_cdecl  = list(map(lambda a: 'arg '+str(a), range(10)))
    _args_x32_reg1   = ['eax'] + _args_x32_cdecl[:-1]
    _args_x32_reg2   = ['eax', 'edx'] + _args_x32_cdecl[:-2]
    _args_x32_reg3   = ['eax', 'edx', 'ecx'] + _args_x32_cdecl[:-3]
@@ -251,11 +254,11 @@ class Rule(DirectoryInterface):
       return l
 
    def __replaceVars(self, l):
-      for v in findall('\\' + self._escapeChar + '[_a-zA-Z][_a-zA-Z0-9]*', l):
+      for v in findall('\\*[_a-zA-Z][_a-zA-Z0-9]*', l):
          if v not in self._vars:
-            if len(self._vars) > self._maxVars:
-               raise Exception('\n\nSorry Dude, too many variables...\n')
             self._vars[v] = 'var ' + str(len(self._vars))
+            if len(self._vars) > self._maxVars:
+               raise RuleException('Too many variables in the rule (' + str(self._maxVars) + ' allowed)')
          l = l.replace(v, self._vars[v])
       return l
 
@@ -265,8 +268,7 @@ class Rule(DirectoryInterface):
          if e in environ:
             l = l.replace('$' + e, environ[e])
          else:
-            if removeIfNotFound:
-               l = l.replace('$' + e, '')
+            raise RuleException('Unknown environment variable: ' + e)
       return l
 
    def __replaceSymbols(self, l):
@@ -279,7 +281,7 @@ class Rule(DirectoryInterface):
    def __replaceLine(self, l, args, regs, shift = 0):
       if match('^\s*\#', l):
          return ''
-      l = self.__replaceEnvs(l, False)
+      l = self.__replaceEnvs(l)
       l = self.__replaceRets(l)
       l = self.__replaceEols(l)
       l = self.__replaceWords(l)
@@ -287,7 +289,6 @@ class Rule(DirectoryInterface):
       l = self.__replaceRegs(l, regs)
       l = self.__replaceVars(l)
       l = self.__replaceSymbols(l)
-      l = self.__replaceEnvs(l)
       return l
 
    def __replaceText(self, s, args, regs, shift):
@@ -302,6 +303,8 @@ class Rule(DirectoryInterface):
             arch = '_' + arg
          elif arg == 'shift':
             shift = 1
+         else:
+            raise RuleException('Unknown option: ' + e)
       if not arch:
          arch = '_x32'
          if self.is64bit:
@@ -339,7 +342,7 @@ rulesetCache = {}
 hookCache = {'filled': False, 'last': 0}
 
 def __readHook(num):
-   if (not hookCache.has_key(num)) and (not hookCache['filled']):
+   if (not num in hookCache) and (not hookCache['filled']):
       if num < hookCache['last']:
          return None
       try:
@@ -347,13 +350,11 @@ def __readHook(num):
          hookCache['last'] = num
       except HookException:
          hookCache['filled'] = True
-   return hookCache[num] if hookCache.has_key(num) else None
+   return hookCache[num] if (num in hookCache) else None
 
 def __readHooks(filters = '', addFreeHooks = False):
    if not filters:
       filters = ['']
-   if not (hasattr(filters, 'iter') or hasattr(filters, '__iter__')):
-      filters = [filters]
    ret, hooks = [], [h for h in [__readHook(i) for i in range(1, 256)] if h]
    for f in filters:
       f, cur = str(f).strip().lower(), []
@@ -366,7 +367,7 @@ def __readHooks(filters = '', addFreeHooks = False):
             h = __readHook(int(f))
             if h:
                cur.append(h)
-         except Exception, e:
+         except Exception as e:
             pass
       if addFreeHooks:
          cur += [h for h in hooks if not h.isHooked()]
@@ -374,8 +375,8 @@ def __readHooks(filters = '', addFreeHooks = False):
    return ret
 
 def do_help(args):
-   for k, v in sorted(((k, v) for k, v in globals().items() if k.startswith('do_') and k != 'do_help' and callable(v))):
-      print k[3:].replace('_', '-') + ':\n' + str(v.__doc__)
+   for k, v in sorted(((k, v) for k, v in globals().items() if k.startswith('do_') and k != 'do_help')):
+      print(k[3:].replace('_', '-') + ':\n' + str(v.__doc__))
 
 def do_hook_show(args):
    """
@@ -394,18 +395,18 @@ def do_hook_show(args):
       splinter hook-show 1 2 3 '^file/' c10b13a3
       SPLINTER_FORMAT='%(num)s %(address)s %(enable)s %(hits)s %(dropped)s %(text)s' splinter hook-show
    """
-   if environ.has_key('SPLINTER_FORMAT'):
+   if 'SPLINTER_FORMAT' in environ:
       fmt = environ['SPLINTER_FORMAT']
    else:
       fmt = '%(num)3s %(address)17s %(enable)8s %(refcount)4s %(hits)8s %(dropped)8s   %(text)s'
-      print fmt % {'num':'', 'address':'address', 'enable':'on/off', 'refcount':'ref', 'hits':'hits', 'dropped':'dropped', 'text':'notes'}
+      print(fmt % {'num':'', 'address':'address', 'enable':'on/off', 'refcount':'ref', 'hits':'hits', 'dropped':'dropped', 'text':'notes'})
    for h in __readHooks(args):
-      print fmt % h.values()
+      print(fmt % h.values())
 
 def __do_rules(callback, args):
    for arg in [a for a in args if a]:
       paths = [arg]
-      if environ.has_key('SPLINTER_DIR'):
+      if 'SPLINTER_DIR' in environ:
          paths.append(environ['SPLINTER_DIR'] + '/' + arg)
       for p in paths:
          if path.isdir(p):
@@ -429,7 +430,7 @@ def do_shot_load(args):
       splinter shot-load shot/fd-close
       splinter shot-load shot/zombie-kill
    """
-   exitIfNotLoaded()
+   exitIfModuleNotLoaded()
    __do_rules(__do_shot_load, args)
 
 def __do_hook_load(p, arg):
@@ -442,10 +443,10 @@ def __do_hook_load(p, arg):
          raise HookException('incorrect reply: ' + reply)
       if int(vals[1]) == 0:
          raise HookException(str(vals[2]))
-      print 'Success:', r.text, '@', r.address
-   except HookException, e:
-      print 'Failure:', r.text, '@', r.address, '[' + str(e) + ']'
-   except InterfaceException, e:
+      print('Success:', r.text, '@', r.address)
+   except HookException as e:
+      print('Failure:', r.text, '@', r.address, '[' + str(e) + ']')
+   except InterfaceException as e:
       for p, a in [(p + '/' + x, arg + '/' + x) for x in listdir(p) if path.isdir(p + '/' + x)]:
          __do_hook_load(p, a)
 
@@ -463,7 +464,7 @@ def do_hook_load(args):
       splinter hook-load proc net/connect io
       SPLINTER_DIR=/usr/share/splinter.d splinter hook-load file proc io
    """
-   exitIfNotLoaded()
+   exitIfModuleNotLoaded()
    __do_rules(__do_hook_load, args)
 
 def do_hook_unload(args):
@@ -489,7 +490,7 @@ def do_hook_zero(args):
    Examples:
       splinter hook-zero file/open file/close
    """
-   exitIfNotLoaded()
+   exitIfModuleNotLoaded()
    for h in __readHooks(args):
       h.zero()
 
@@ -524,8 +525,8 @@ def __do_rule_show(p, arg):
       if hasattr(v, 'text'):
          fmt += '### text: %(text)s\n'
       fmt += '### address: %(address)s\n### options: %(options)s\n### entry:\n%(entry)s\n### exit:\n%(exit)s\n'
-      print fmt % v
-   except InterfaceException, e:
+      print(fmt % v)
+   except InterfaceException as e:
       for p, a in [(p + '/' + x, arg + '/' + x) for x in listdir(p) if path.isdir(p + '/' + x)]:
          __do_rule_show(p, a)
 
@@ -554,7 +555,7 @@ def do_stats_show(args):
       raise Exception('Incorrect reply: ' + reply)
    if int(vals[1]) != int(seq):
       raise HookException('Incorrect ping reply: ' + reply)
-   s = map(lambda (i,s): '\n'+s+': '+vals[i] if s else '', enumerate(
+   s = map(lambda x: '\n'+x[1]+': '+vals[x[0]], enumerate(
       ('Version', '\nContext size', 'Context args', 'Context vars', 'Context store', '\nMemory chunks used',
       '\nStrings total bytes', 'Strings free bytes', 'Strings used', 'Strings used bytes',
       '\nAtoms total', 'Atoms total bytes', 'Atoms free', 'Atoms free bytes', 'Atoms used', 'Atoms used bytes',
@@ -563,70 +564,74 @@ def do_stats_show(args):
       '\nSymbols total', 'Symbols total bytes', 'Symbols free',
       'Symbols free bytes', 'Symbols used', 'Symbols used bytes',
       '\nRingbuf size', 'Ringbuf fill', 'Ringbuf head', 'Ringbuf drops'), 2))
-   print ''.join(s)
+   print(''.join(s))
 
 def do_module_load(args):
    """
-   Loads a splinter kernel module with neccessary parameters, also provides
+   Loads a splinter kernel module with necessary parameters, also provides
    couple of convenience shorthands; debug, test, huge, big, small, profiler.
-   Upon its load splinter module leaves info in system logs, the debug option
-   increases its verbosity. Small, big and huge options determine the number
-   of slots splinter will use, issue 'splinter hook-show' afterwards.
+   Once loaded, splinter module leaves info in system logs, the debug option
+   increases verbosity. Small, big and huge options determine the number of
+   slots splinter will use, you may wanna issue 'splinter hook-show' afterwards.
 
    Examples:
       splinter module-load debug
       splinter module-load small
       splinter module-load huge debug
    """
-   if isLoaded():
-      print '\nSplinter already loaded...\n'
+   if isModuleLoaded():
+      print('\nSplinter already loaded...\n')
       exit(-1)
 
-   moduleOptions = {'splinter_debug_level':0, 'splinter_max_hooks':16, 'splinter_buffer_size':250000}
+   moduleOptions = {'splinter_debug_level':      0,
+                    'splinter_max_hooks':        16,
+                    'splinter_buffer_size':      250000,
+                    'splinter_vmalloc_address':  findAddress('module_alloc'),
+                    'splinter_kallsyms_address': findAddress('kallsyms_lookup_name')}
 
-   moduleOptions['splinter_vmalloc_address'] = findAddress('module_alloc')
    if not moduleOptions['splinter_vmalloc_address']:
-      print "Couldn't determine module_alloc address from " + symbolFile + ", quitting"
+      print("Couldn't determine module_alloc address from " + symbolFile + ", quitting")
       exit(-1)
    moduleOptions['splinter_vmalloc_address'] = '0x' + moduleOptions['splinter_vmalloc_address']
 
-   moduleOptions['splinter_kallsyms_address'] = findAddress('kallsyms_lookup_name')
    if not moduleOptions['splinter_kallsyms_address']:
-      print "Couldn't determine kallsyms_lookup_name address from " + symbolFile + ", quitting"
+      print("Couldn't determine kallsyms_lookup_name address from " + symbolFile + ", quitting")
       exit(-1)
    moduleOptions['splinter_kallsyms_address'] = '0x' + moduleOptions['splinter_kallsyms_address']
 
    for arg in args:
-      arg = sub('[^a-zA-Z0-9]', ' ', arg.lower().strip())
-      if 'debug' in arg:
+      if arg == 'debug':
          moduleOptions['splinter_debug_level'] = 9
-      elif 'profiler' in arg:
+      elif arg == 'profiler':
          moduleOptions['splinter_max_hooks'] = 256
          moduleOptions['splinter_buffer_size'] = 100000
-      elif 'huge' in arg:
+      elif arg == 'huge':
          moduleOptions['splinter_max_hooks'] = 128
          moduleOptions['splinter_buffer_size'] = 4000000
-      elif 'big' in arg:
+      elif arg == 'big':
          moduleOptions['splinter_max_hooks'] = 32
          moduleOptions['splinter_buffer_size'] = 1000000
-      elif 'small' in arg:
+      elif arg == 'small':
          moduleOptions['splinter_max_hooks'] = 4
          moduleOptions['splinter_buffer_size'] = 10000
-      elif 'test' in arg:
-          moduleOptions['splinter_test_mode'] = 1
+      elif arg == 'test':
+         moduleOptions['splinter_test_mode'] = 1
+      else:
+         raise Exception('Incorrect argument: ' + arg)
 
-   args = ['modprobe', 'splinter'] + map(lambda (k,v): k+'='+str(v), moduleOptions.items())
+   args = ['modprobe', 'splinter'] + map(lambda x: x[0]+'='+str(x[1]), moduleOptions.items())
    exit(spawnvp(P_WAIT, 'modprobe', args))
 
 def do_module_unload(args):
    """
-   Unloads the kernel splinter module. Upon which all hooks are unloaded too.
+   Unloads the kernel splinter module. All hooks are being unloaded too.
+   It may happen that a hook is being in use, in such case, unload will fail.
 
    Examples:
       splinter module-unload
    """
-   if not isLoaded():
-      print '\nSplinter not loaded...\n'
+   if not isModuleLoaded():
+      print('\nSplinter not loaded...\n')
       exit(-1)
    exit(spawnvp(P_WAIT, 'rmmod', ['rmmod', 'splinter']))
 
@@ -634,7 +639,7 @@ def do_buffer_show(args):
    """
    Shows the content of a memory buffer. The buffer is a ring buffer, when
    overflown, dropped bytes counter is updated accordingly. Also by design,
-   once read from buffer data is discarded, which immitates 'dmesg -c'.
+   once read from buffer data is discarded (which imitates 'dmesg -c').
 
    Examples:
       splinter buffer-show
@@ -645,7 +650,7 @@ def do_buffer_show(args):
       vals = netstringUnroll(reply)
       if (len(vals) != 3) or (vals[0] != 'SPLINTER_DUMP_ANS'):
          break
-      dropped += int(vals[1]) # what to do with this?
+      dropped += int(vals[1]) # TODO what to do with this?
       stdout.write(vals[2])
       # This is a protection not an optimization
       if len(vals[2]) < 4096:
@@ -660,14 +665,9 @@ if not args:
 call = args[0].replace('-', '_')
 args = args[1:]
 
-if globals().has_key('do_' + call):
-   call = globals()['do_' + call]
-else:
-   call = None
-
-if not callable(call):
-   call = globals()['do_help']
-
-call(args)
+try:
+   globals().get('do_' + call)(args)
+except TypeError as e:
+   do_help(args)
 
 ############################################################################
