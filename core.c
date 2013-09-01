@@ -13,7 +13,7 @@
 
 2. In an x64 mode the x32 jump is still available but there is
    no analogous 64bit jump. Meaning, there is no direct way to
-   jump beyond 32bit boudary in 64bit which implies, code is
+   jump beyond 32bit boundary in 64bit which implies, code is
    still limited to 4GB. Even though one may not need this big
    chunk of code, virtual memory can be mapped across over 4GB
    boundaries even though physically code takes less.
@@ -213,7 +213,7 @@ hook_p hook_install(uint_t address, char * entry_expression, char * exit_express
   if((hooked_size = (uint_t)i) < 5)
     splinter_error_return(NULL, "detected only %lu bytes of code header", hooked_size);
   if(hooked_size > HOOK_LENGTH)
-    splinter_error_return(NULL, "disassembling returned a bizzare value of %lu bytes", hooked_size);
+    splinter_error_return(NULL, "disassembling returned a bizarre value of %lu bytes", hooked_size);
 
   if (entry_expression) {
     if ((entry_chain = parse_expression("entry expression -", entry_expression)) == NULL)
