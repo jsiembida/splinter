@@ -18,10 +18,10 @@ int splinter_test_mode = 0;
 module_param(splinter_test_mode, int, 0);
 
 /* Now, that is gross! */
-static long splinter_vmalloc_address = 0;
-module_param(splinter_vmalloc_address, long, 0);
-static long splinter_kallsyms_address = 0;
-module_param(splinter_kallsyms_address, long, 0);
+static unsigned long splinter_vmalloc_address = 0;
+module_param(splinter_vmalloc_address, ulong, 0);
+static unsigned long splinter_kallsyms_address = 0;
+module_param(splinter_kallsyms_address, ulong, 0);
 
 /********************************************************************/
 
